@@ -1,0 +1,3 @@
+chart-dirs:
+  - /work-dir
+chart-yaml-schema: /work-dir/chart-schema.yaml
