@@ -22,13 +22,8 @@ node () {
     if (env.CHANGE_TARGET != null) {
       stage ('Testing') {
         ansiColor('xterm') {
-          withCredentials([file(credentialsId: '9b3d16e3-e9a9-4f33-96a8-47c22b3dc69a', variable: 'GCSKEY')]) {
-            env.TARGET_BRANCH = "remotes/origin/${env.CHANGE_TARGET}"
-            env.GCLOUD_KEY = "${GCSKEY}"
-            sh "gcloud auth activate-service-account --key-file=${GCSKEY}"
-            sh "gcloud auth configure-docker"
-            sh "./chart-testing.sh"
-          }
+          env.TARGET_BRANCH = "remotes/origin/${env.CHANGE_TARGET}"
+          sh "./chart-testing.sh"
         }
       }
     }

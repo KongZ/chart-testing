@@ -18,6 +18,6 @@ Note 2: If charts have dependencies and you won't to test, you can put chart nam
 ## To setup Github on Jenkins
  - https://wiki.jenkins.io/display/JENKINS/GitHub+Plugin
 
-References:
+## References:
  - https://github.com/kubernetes-sigs/kind
  - https://github.com/helm/chart-testing
