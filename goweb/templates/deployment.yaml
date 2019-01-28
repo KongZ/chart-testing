@@ -1,0 +1,45 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ template "web.fullname" . }}
+  labels:
+    app: {{ template "web.fullname" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: {{ template "web.fullname" . }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 50%
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: {{ template "web.fullname" . }}
+    spec:
+      containers:
+      - name: {{ template "web.fullname" . }}
+        image: "{{ .Values.image.repo }}"
+        imagePullPolicy: {{ default "" .Values.imagePullPolicy | quote }}
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        ports:
+        - name: http
+          containerPort: {{ default "8000" .Values.config.port }}
+        env:
+        - name: PORT
+          value: {{ default "8000" .Values.config.port | quote }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.config.port }}
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: {{ .Values.config.port }}
+      terminationGracePeriodSeconds: 30

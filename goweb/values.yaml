@@ -1,0 +1,21 @@
+image:
+  repo: "asia.gcr.io/kongz/goweb:latest"
+  pullPolicy: IfNotPresent
+
+## Specify a service type
+## ref: http://kubernetes.io/docs/user-guide/services/
+service:
+  type: LoadBalancer
+
+## Configure resource requests and limits
+## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+resources:
+  requests:
+    memory: 8Mi
+    cpu: 16m
+  limits:
+    memory: 16Mi
+    cpu: 32m
+
+config:
+  port: 8000
