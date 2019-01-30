@@ -10,13 +10,17 @@ REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel)}"
 ## Jenkins on th0host0 can't delete file
 KEEP_FILE_AFTER_BUILD=true
 TARGET_BRANCH="${TARGET_BRANCH:-develop}"
+TMP_DIR=$(mktemp -d)
+WATCH_FILE="${TMP_DIR}/`openssl rand -hex 8`"
 
 run_kind() {
   echo "Getting kind ..."
   install_kind
 
   echo "Create Kubernetes cluster with kind..."
-  KIND_IS_UP=true
+  # make sure no other kind is running
+  kind delete cluster || true 
+  kind_is_up=true
   kind create cluster --image=kindest/node:"$K8S_VERSION"
 
   echo "Export kubeconfig..."
@@ -33,7 +37,6 @@ run_kind() {
 # install kind to a tempdir GOPATH from this script's kind checkout
 install_kind() {
   # install `kind` to tempdir
-  TMP_DIR=$(mktemp -d)
   # ensure bin dir
   mkdir -p "${TMP_DIR}/bin"
   # if we have a kind checkout, install that to the tmpdir, otherwise go get it
@@ -70,8 +73,8 @@ cleanup() {
   echo "Events Summary"
   kubectl -n "$namespace" get events --sort-by='{.lastTimestamp}'
 
-  # KIND_IS_UP is true once we: kind create
-  if [[ "${KIND_IS_UP:-}" = true ]]; then
+  # kind_is_up is true once we: kind create
+  if [[ "${kind_is_up:-}" = true ]]; then
     kind delete cluster || true
   fi
   docker rm -f $container_id > /dev/null
@@ -84,11 +87,15 @@ cleanup() {
   fi
 }
 
+watch_pods() {
+  until [ -f "${WATCH_FILE}" ]; do kubectl -n "$namespace" get po && sleep 5; done 
+}
 
 main() {
   ## ct auto-detect changing charts does not work with Jenkins `checkout scm`
   echo "Finding changing charts... ${TARGET_BRANCH}"
-  charts=$(git diff --name-only ${TARGET_BRANCH} | grep '/' | awk -F/ '{print $1}' | uniq | fgrep -vf chart-testing.ignore | tr '\n' ',' | sed '$s/,$//')
+  fork_point=$(git rev-list --boundary ...${TARGET_BRANCH} | grep "^-" | cut -c2-)
+  charts=$(git diff --name-only ${fork_point} | grep '/' | awk -F/ '{print $1}' | uniq | fgrep -vf chart-testing.ignore | tr '\n' ',' | sed '$s/,$//') || true
   if [[ -z "$charts" ]]; then
     echo "No charts change"
     exit 0
@@ -140,7 +147,7 @@ main() {
 
   echo "Installing chart... $charts" 
   # docker exec -e "KUBECONFIG=/root/.kube/config:/root/.kube/private_config" "$container_id" ct install --config /workdir/ct.yaml --charts "$charts" --namespace="$namespace" --helm-extra-args "--timeout 500 --tiller-namespace kube-system --tiller-connection-timeout 30" --debug
-  docker exec "$container_id" ct install --config /workdir/ct.yaml --charts "$charts" --namespace="$namespace" --helm-extra-args "--timeout 500 --tiller-namespace kube-system --tiller-connection-timeout 30"
+  docker exec "$container_id" ct install --config /workdir/ct.yaml --charts "$charts" --namespace="$namespace" --helm-extra-args "--timeout 500 --tiller-namespace kube-system --tiller-connection-timeout 30" && touch $WATCH_FILE & watch_pods
   echo "Done Testing!"
 }
 
