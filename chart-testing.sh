@@ -88,7 +88,15 @@ cleanup() {
 }
 
 watch_pods() {
-  until [ -f "${WATCH_FILE}" ]; do kubectl -n "$namespace" get po && sleep 5; done 
+  until [ -f "${WATCH_FILE}" ]; 
+  do
+    po=$(kubectl -n "$namespace" get po)
+    if [[ "$po" = "No resources found." ]]; then
+      break
+    fi
+    kubectl -n "$namespace" get po
+    sleep 5; 
+  done 
 }
 
 main() {
@@ -114,7 +122,7 @@ main() {
 
   echo "Preparing cluster..." 
   # Get kind container IP
-  kind_container_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kind-1-control-plane)
+  kind_container_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kind-control-plane)
   # Copy kubeconfig file
   docker exec "$container_id" mkdir /root/.kube
   docker cp "$KUBECONFIG" "$container_id:/root/.kube/config"
