@@ -103,6 +103,11 @@ main() {
   ## ct auto-detect changing charts does not work with Jenkins `checkout scm`
   echo "Finding changing charts... ${TARGET_BRANCH}"
   fork_point=$(git rev-list --boundary ...${TARGET_BRANCH} | grep "^-" | cut -c2-)
+  if [[ -z "$fork_point" ]]; then
+    echo "No changes detect on ${TARGET_BRANCH}"
+    exit 0
+  fi
+  echo "Finding change from ${fork_point}..."
   charts=$(git diff --name-only ${fork_point} | grep '/' | awk -F/ '{print $1}' | uniq | fgrep -vf chart-testing.ignore | tr '\n' ',' | sed '$s/,$//') || true
   if [[ -z "$charts" ]]; then
     echo "No charts change"
@@ -155,7 +160,7 @@ main() {
 
   echo "Installing chart... $charts" 
   # docker exec -e "KUBECONFIG=/root/.kube/config:/root/.kube/private_config" "$container_id" ct install --config /workdir/ct.yaml --charts "$charts" --namespace="$namespace" --helm-extra-args "--timeout 500 --tiller-namespace kube-system --tiller-connection-timeout 30" --debug
-  docker exec "$container_id" ct install --config /workdir/ct.yaml --charts "$charts" --namespace="$namespace" --helm-extra-args "--timeout 500 --tiller-namespace kube-system --tiller-connection-timeout 30" && touch $WATCH_FILE & watch_pods
+  docker exec "$container_id" ct install --config /workdir/ct.yaml --charts "$charts" --namespace="$namespace" --helm-extra-args "--timeout 500 --tiller-namespace kube-system --tiller-connection-timeout 30"; touch $WATCH_FILE & watch_pods
   echo "Done Testing!"
 }
 
