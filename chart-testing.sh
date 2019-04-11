@@ -4,7 +4,7 @@ set -o errexit
 set -o pipefail
 
 CHART_TESTING_IMAGE="quay.io/helmpack/chart-testing"
-CHART_TESTING_TAG="v2.1.0"
+CHART_TESTING_TAG="v2.2.0"
 K8S_VERSION="v1.11.3"
 REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel)}"
 ## Jenkins on th0host0 can't delete file
@@ -88,21 +88,58 @@ cleanup() {
 }
 
 watch_pods() {
-  until [ -f "${WATCH_FILE}" ]; 
+  count=1
+  until [ -f "${WATCH_FILE}" ];
   do
-    po=$(kubectl -n "$namespace" get po)
-    if [[ "$po" = "No resources found." ]]; then
-      break
+    sleep 5;
+    # Print POD detail every 1 minute
+    if [[ $((count % 12)) == 0 ]]; then
+      pos=$(kubectl -n "$namespace" get po | tail +2 | awk '{print $1}')
+      for po in ${pos[@]} 
+      do
+        echo "=========================================="
+        echo "[$(date)] Describe of pod $po"
+        echo "=========================================="
+        (kubectl -n "$namespace" describe po $po) || true
+        echo "=========================================="
+        echo "[$(date)] Logs of pod $po"
+        echo "=========================================="
+        (kubectl -n "$namespace" logs $po) || true
+        echo "=========================================="
+      done
     fi
-    kubectl -n "$namespace" get po
-    sleep 5; 
-  done 
+    # Print POD status every 5 seconds
+    kubectl -n "$namespace" get po | tail +2
+    count=$((count+1))
+  done
+}
+
+patch_serviceaccount() {
+  # Pause for `ct install` to run
+  sleep 3;
+  if [[ ! -z "$GCLOUD_KEY" ]]; then
+    sas=$(kubectl -n "$namespace" get serviceaccount | tail +2 | awk '{print $1}')
+    for sa in ${sas[@]} 
+    do
+      if [[ "${sa}" = "default" ]] || [["${sa}" = ""]]; then
+        continue
+      fi
+      echo "Patching service account $sa on $namespace"
+      kubectl -n $namespace patch serviceaccount $sa -p "{\"imagePullSecrets\": [{\"name\": \"regcred\"}]}" || true
+      echo "Recreating pods..."
+      pos=$(kubectl -n "$namespace" get po | tail +2 | awk '{print $1}')
+      for po in ${pos[@]} 
+      do
+        kubectl -n $namespace delete pod $po
+      done
+    done
+  fi
 }
 
 main() {
   ## ct auto-detect changing charts does not work with Jenkins `checkout scm`
   echo "Finding changing charts... ${TARGET_BRANCH}"
-  fork_point=$(git rev-list --boundary ...${TARGET_BRANCH} | grep "^-" | cut -c2-)
+  fork_point=$(git rev-list --boundary ...${TARGET_BRANCH} | grep "^-" | cut -c2- | tail -1) || true
   if [[ -z "$fork_point" ]]; then
     echo "No changes detect on ${TARGET_BRANCH}"
     exit 0
@@ -160,7 +197,7 @@ main() {
 
   echo "Installing chart... $charts" 
   # docker exec -e "KUBECONFIG=/root/.kube/config:/root/.kube/private_config" "$container_id" ct install --config /workdir/ct.yaml --charts "$charts" --namespace="$namespace" --helm-extra-args "--timeout 500 --tiller-namespace kube-system --tiller-connection-timeout 30" --debug
-  docker exec "$container_id" ct install --config /workdir/ct.yaml --charts "$charts" --namespace="$namespace" --helm-extra-args "--timeout 500 --tiller-namespace kube-system --tiller-connection-timeout 30"; touch $WATCH_FILE & watch_pods
+  watch_pods & patch_serviceaccount & docker exec "$container_id" ct install --config /workdir/ct.yaml --charts "$charts" --namespace="$namespace" --helm-extra-args "--timeout 2400 --tiller-namespace kube-system --tiller-connection-timeout 30"; touch $WATCH_FILE
   echo "Done Testing!"
 }
 
